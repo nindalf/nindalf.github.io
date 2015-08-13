@@ -1,6 +1,6 @@
 baseurl = "http://krishna.tech/"
 languageCode = "en-us"
-title = "My New Hugo Site"
+title = "Krishna's blog"
 contentdir = "content"
 layoutdir = "layouts"
 publishdir = ".."
