@@ -4,5 +4,5 @@ title = "My New Hugo Site"
 contentdir = "content"
 layoutdir = "layouts"
 publishdir = ".."
-canonifyurls = true
+# canonifyurls = true
 
