@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>My New Hugo Site</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <link rel="stylesheet" href="http://localhost:1313/css/bootstrap.min.css" media="screen">
+    <link rel="stylesheet" href="http://localhost:1313/css/hugo-bootswatch.css">
+  </head>
+  <body>
+
+    <div class="navbar navbar-default navbar-fixed-top">
+      <div class="container">
+        <div class="navbar-header">
+          <a href="http://localhost:1313/" class="navbar-brand">My New Hugo Site</a>
+          <button class="navbar-toggle" type="button" data-toggle="collapse" data-target="#navbar-main">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+        </div>
+        <div class="navbar-collapse collapse" id="navbar-main">
+          <ul class="nav navbar-nav navbar-right">
+           <li class="dropdown">
+              <a class="dropdown-toggle" data-toggle="dropdown" href="#" id="sections">Sections<span class="caret"></span></a>
+              <ul class="dropdown-menu" aria-labelledby="download">
+              
+                <li><a href="http://localhost:1313/"></a></li>
+              
+                <li><a href="http://localhost:1313/post">post</a></li>
+              
+              </ul>
+            </li> 
+          </ul>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="container">
+        <h1><a href="http://localhost:1313/post/how-goroutines-work/">How Goroutines Work</a></h1>
+        <span class="lead">Thu, Jan 8, 2015</span>
+        <div class="post">
+            
+
+<p>###Introduction to Go</p>
+
+<p>If you are new to the Go programming language, or if the sentence &ldquo;Concurrency is not parallelism&rdquo; means nothing to you, then check out Rob Pike&rsquo;s <a href="http://www.youtube.com/watch?v=cN_DpYBzKso">excellent talk on the subject</a>. Its 30 minutes long, and I guarantee that watching it is 30 minutes well spent.</p>
+
+<p>To summarize the difference - &ldquo;when people hear the word concurrency they often think of parallelism, a related but quite distinct concept. In programming, concurrency is the composition of independently executing processes, while parallelism is the simultaneous execution of (possibly related) computations. Concurrency is about dealing with lots of things at once. Parallelism is about doing lots of things at once.&rdquo; <sup>[1]</sup></p>
+
+<p>Go allows us to write concurrent programs. It provides goroutines and importantly, the ability to communicate between them. I will focus on the former.</p>
+
+<h3 id="goroutines-and-threads-the-differences:019ae00c504e08f1080d694a57bde0cc">Goroutines and Threads - the differences</h3>
+
+<p>Go uses goroutines while a language like Java uses threads. What are the differences between the two? We need to look at 3 factors - memory consumption, setup and teardown and switching time.</p>
+
+<h4 id="memory-consumption:019ae00c504e08f1080d694a57bde0cc">Memory consumption</h4>
+
+<p>The creation of a goroutine does not require much memory - only 2kB of stack space. They grow by allocating and freeing heap storage as required.<sup>[2][3]</sup> Threads on the other hand start out at 1Mb (500 times more), along with a region of memory called a guard page that acts as a guard between one thread&rsquo;s memory and another.<sup>[7]</sup></p>
+
+<p>A server handling incoming requests can therefore create one goroutine per request without a problem, but one thread per request will eventually lead to the dreaded OutOfMemoryError. This isn&rsquo;t limited to Java - any language that uses OS threads as the primary means of concurrency will face this issue.</p>
+
+<h4 id="setup-and-teardown-costs:019ae00c504e08f1080d694a57bde0cc">Setup and teardown costs</h4>
+
+<p>Threads have significant setup and teardown costs because it has to request resources from the OS and return it once its done. The workaround to this problem is to maintain a pool of threads. In contrast, goroutines are created and destroyed by the runtime and those operations are pretty cheap. The language doesn&rsquo;t support manual management of goroutines.</p>
+
+<h4 id="switching-costs:019ae00c504e08f1080d694a57bde0cc">Switching costs</h4>
+
+<p>When a thread blocks, another has to be scheduled in its place. Threads are scheduled preemptively, and during a thread switch, the scheduler needs to save/restore ALL registers, that is, 16 general purpose registers, PC (Program Counter), SP (Stack Pointer), segment registers, 16 XMM registers, FP coprocessor state, 16 AVX registers, all MSRs etc. This is quite significant when there is rapid switching between threads.</p>
+
+<p>Goroutines are scheduled cooperatively and when a switch occurs, only 3 registers need to be saved/restored - Program Counter, Stack Pointer and DX. The cost is much lower.</p>
+
+<p>As discussed earlier, the number of goroutines is generally much higher, but that doesn&rsquo;t make a difference to switching time for two reasons. Only runnable goroutines are considered, blocked ones aren&rsquo;t. Also, modern schedulers are O(1) complexity, meaning switching time is not affected by the number of choices (threads or goroutines).<sup>[5]</sup></p>
+
+<h3 id="how-goroutines-are-executed:019ae00c504e08f1080d694a57bde0cc">How goroutines are executed</h3>
+
+<p>As mentioned earlier, the runtime manages the goroutines throughout from creation to scheduling to teardown. The runtime is allocated a few threads on which all the goroutines are multiplexed. At any point of time, each thread will be executing one goroutine. If that goroutine is blocked, then it will be swapped out for another goroutine that will execute on that thread instead.<sup>[6]</sup></p>
+
+<p>As the goroutines are scheduled cooperatively, a goroutine that loops continuously can starve other goroutines on the same thread. In Go 1.2, this problem is somewhat alleviated by occasionally invoking the Go scheduler when entering a function, so a loop that includes a non-inlined function call can be prempted.</p>
+
+<h3 id="goroutines-blocking:019ae00c504e08f1080d694a57bde0cc">Goroutines blocking</h3>
+
+<p>Goroutines are cheap and do not cause the thread on which they are multiplexed to block if they are blocked on</p>
+
+<ul>
+<li>network input</li>
+<li>sleeping</li>
+<li>channel operations or</li>
+<li>blocking on primitives in the sync package.</li>
+</ul>
+
+<p>Even if tens of thousands of goroutines have been spawned, it&rsquo;s not a waste of system resources if most of them are blocked on one of these since the runtime schedules another goroutine instead.</p>
+
+<p>In simple terms, goroutines are a lightweight abstraction over threads. A Go programmer does not deal with threads, and similarly the OS is not aware of the existence of goroutines. From the OS&rsquo;s perspective, a Go program will behave like an event-driven C program. <sup>[5]</sup></p>
+
+<h3 id="threads-and-processors:019ae00c504e08f1080d694a57bde0cc">Threads and processors</h3>
+
+<p>Although you cannot directly control the number of threads that the runtime will create, it is possible to set the number of processor cores used by the program. This is done by setting the variable <code>GOMAXPROCS</code> with a call to <code>runtime.GOMAXPROCS(n)</code>. Increasing the number of cores may not necessarily improve the performance of your program, depending on its design. The profiling tools can be used to find the ideal number of cores for your program.</p>
+
+<p>###Closing thoughts</p>
+
+<p>As with other languages, it is important to prevent simultaneous access of shared resources by more than one goroutine. It is best to transfer data between goroutines using channels, ie, <a href="https://blog.golang.org/share-memory-by-communicating">do not communicate by sharing memory; instead, share memory by communicating</a>.</p>
+
+<p>Lastly, I&rsquo;d strongly recommend you check out <a href="http://www.cs.cmu.edu/~crary/819-f09/Hoare78.pdf">Communicating Sequential Processes</a> by C. A. R. Hoare. This man was truly a genius. In this paper (published 1978) he predicted how the single core performance of processors would eventually plateau and chip-makers would instead increase the number of cores. His proposal to exploit this had a deep influence on the design of Go.</p>
+
+<p>###Footnotes</p>
+
+<ul>
+<li><p><a href="http://blog.golang.org/concurrency-is-not-parallelism">1</a> - Concurrency is not parallelism by Rob Pike</p></li>
+
+<li><p><a href="http://golang.org/doc/effective_go.html#goroutines">2</a> - Effective Go: Goroutines</p></li>
+
+<li><p><a href="http://golang.org/doc/go1.4#runtime">3</a> - Goroutine stack size was decreased from 8kB to 2kB in Go 1.4.</p></li>
+
+<li><p><a href="http://agis.io/2014/03/25/contiguous-stacks-in-go.html">4</a> - Goroutine stacks became contiguous in Go 1.3</p></li>
+
+<li><p><a href="https://groups.google.com/forum/#!topic/golang-nuts/j51G7ieoKh4">5</a> - Dmitry Vyukov explains scheduling of goroutines on golang-nuts</p></li>
+
+<li><p><a href="http://www1.cs.columbia.edu/~aho/cs6998/reports/12-12-11_DeshpandeSponslerWeiss_GO.pdf">6</a> - Analysis of the Go runtime scheduler by Deshpande et al.</p></li>
+
+<li><p><a href="http://dave.cheney.net/2014/06/07/five-things-that-make-go-fast">7</a> - 5 things that make Go fast by Dave Cheney</p></li>
+</ul>
+
+<p>###Further Reading</p>
+
+<p>If you&rsquo;re interested in learning more about Go, there are a couple great talks about the language here</p>
+
+<ul>
+<li><p><a href="http://www.youtube.com/watch?v=f6kdp27TYZs‎">Go Concurrency Patterns</a> by Rob Pike</p></li>
+
+<li><p><a href="http://www.youtube.com/watch?v=QDDwwePbDtw">Advanced Go Concurrency Patterns</a> by Sameer Ajmani.</p></li>
+</ul>
+
+        </div>
+
+              <footer>
+        <nav class="navbar navbar-default">
+          <div class="container-fluid">
+            <div class="collapse navbar-collapse">
+              <ul class="nav navbar-nav">
+                <li><a href="http://gohugo.io">Hugo</a></li>
+                <li><a href="http://bootswatch.com">Bootswatch</a></li>
+                <li><a href="http://getbootstrap.com">Bootstrap</a></li>
+              </ul>
+              <ul class="nav navbar-nav navbar-right">
+                <li class="pull-right"><a href="#top">Back to top</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+      </footer>
+
+ 
+     </div>
+     
+        <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+        <script src="http://localhost:1313/js/bootstrap.min.js"></script>
+        <script src="http://localhost:1313/js/bootswatch.js"></script>
+    </body>
+</html>
+
+

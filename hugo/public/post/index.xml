@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Posts on My New Hugo Site</title>
+    <link>http://localhost:1313/post/</link>
+    <description>Recent content in Posts on My New Hugo Site</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Fri, 09 Jan 2015 08:36:54 -0700</lastBuildDate>
+    <atom:link href="http://localhost:1313/post/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>Implementing AES</title>
+      <link>http://localhost:1313/post/implementing-aes/</link>
+      <pubDate>Fri, 09 Jan 2015 08:36:54 -0700</pubDate>
+      
+      <guid>http://localhost:1313/post/implementing-aes/</guid>
+      <description>
+
+&lt;p&gt;The Advanced Encryption Standard is the most widely used encryption algorithm today. Its fast and secure but also easy to understand and implement.&lt;/p&gt;
+
+&lt;p&gt;If you&amp;rsquo;re interested in learning about AES, look at this comic - &lt;a href=&#34;http://www.moserware.com/2009/09/stick-figure-guide-to-advanced.html&#34;&gt;A Stick Figure Guide to the Advanced Encryption Standard&lt;/a&gt;. He splits his comic into 4 Acts: brief history of crypto, crypto basics, implementation and math. He did a great job with all 4 parts, but I thought elaborating on the implementation would be helpful. In this post, I will only assume you&amp;rsquo;ve read Acts 2 and 3 and signed the foot-shooting-prevention agreement.&lt;/p&gt;
+
+&lt;p&gt;&lt;center&gt;&lt;img src=&#34;http://i.imgur.com/bPZzTwsl.png&#34; alt=&#34;Agreement&#34; /&gt;
+&lt;/center&gt;&lt;/p&gt;
+
+&lt;hr /&gt;
+
+&lt;h3 id=&#34;aes-encryption:83a2e2e2ae104ce1d681fcb0a1f8ca6c&#34;&gt;AES Encryption&lt;/h3&gt;
+
+&lt;p&gt;The implementation of AES involves doing a set of simple operations repeatedly. Each repetition is called a &amp;ldquo;round&amp;rdquo;. Depending on the size of the key (128, 192 or 256 bit), the input (block of 16 bytes) goes through 10, 12 or 14 rounds. In applying the 2 Big Ideas - Diffusion and Confusion, AES makes sure that each bit in the 16 byte block depends on every bit in the same block from 2 rounds previously. That&amp;rsquo;s quite the achievement, so lets speak about the operations in detail.&lt;/p&gt;
+
+&lt;p&gt;Each round consists of 4 steps&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;applying a key - &lt;code&gt;addRoundKey()&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;substituting bytes - &lt;code&gt;subBytes()&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;shifting rows - &lt;code&gt;shiftRows()&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;mixing columns - &lt;code&gt;mixColumns()&lt;/code&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Decryption involves the inverse of these steps, in reverse order&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;inverse-mixing columns - &lt;code&gt;invMixColumns()&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;inverse-shifting rows - &lt;code&gt;invShiftRows()&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;inverse-substituting bytes - &lt;code&gt;invSubBytes()&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;applying a key - &lt;code&gt;addRoundKey()&lt;/code&gt;&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;Have a look at the &lt;code&gt;encryptAES&lt;/code&gt; function below, implemented in Go (Go has a C-like syntax)&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;func encryptAES(state, expkey []uint32, rounds int) {
+	keyi := 0
+	addRoundKey(state, expkey[keyi:keyi+4])
+	keyi += 4
+	for i := 0; i &amp;lt; rounds; i++ {
+		subBytes(state)
+		shiftRows(state)
+		mixColumns(state)
+		addRoundKey(state, expkey[keyi:keyi+4])
+		keyi += 4
+	}
+	subBytes(state)
+	shiftRows(state)
+	addRoundKey(state, expkey[keyi:keyi+4])
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Notes on the implementation:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;The 16-byte block, called state is represented as a slice of 4 4-byte unsigned integers. The 4-byte unsigned int is also referred to as a &amp;ldquo;word&amp;rdquo;.&lt;/li&gt;
+&lt;li&gt;The expanded key is based on the original key. Its 16*(rounds+1) bytes in length.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&#34;subbytes-and-invsubbytes:83a2e2e2ae104ce1d681fcb0a1f8ca6c&#34;&gt;subBytes and invSubBytes&lt;/h3&gt;
+
+&lt;p&gt;All the 4 operations are invertible. If you took any random 16-byte state and applied any operation and its inverse, you&amp;rsquo;d get back the original state. This is how decryption is a simple mirror of the encryption process.&lt;/p&gt;
+
+&lt;p&gt;In &lt;code&gt;subBytes&lt;/code&gt; each of the 16 bytes is replaced by a byte from the S-box (a lookup table). The code would look like:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;input[i] = sbox[input[i]] // i = 0, 1, ..., 15
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;For &lt;code&gt;invSubBytes&lt;/code&gt;, only the lookup table is changed. The code is &lt;code&gt;input[i] = invsbox[input[i]]&lt;/code&gt;. The values for both lookup tables can be found on the &lt;a href=&#34;https://en.wikipedia.org/wiki/Rijndael_S-box&#34;&gt;wiki page&lt;/a&gt;. If this step appears really simple, its because it is. Nevertheless, I&amp;rsquo;d suggest writing a test to check if its working correctly.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;input := []uint32{0x8e9ff1c6, 0x4ddce1c7, 0xa158d1c8, 0xbc9dc1c9}
+expected := []uint32{0x19dba1b4, 0xe386f8c6, 0x326a3ee8, 0x655e78dd}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Another useful test would be to apply &lt;code&gt;subBytes&lt;/code&gt; and &lt;code&gt;invSubBytes&lt;/code&gt; on 16 random bytes and check if you get back the original.&lt;/p&gt;
+
+&lt;h3 id=&#34;shiftrows-and-invshiftrows:83a2e2e2ae104ce1d681fcb0a1f8ca6c&#34;&gt;shiftRows and invShiftRows&lt;/h3&gt;
+
+&lt;p&gt;In &lt;code&gt;shiftRows&lt;/code&gt;, the rows are shifted left. The top row is left untouched, the second row by 1 byte, the third row by 2 bytes, the fourth row by 3 bytes. As depicted below&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://upload.wikimedia.org/wikipedia/commons/6/66/AES-ShiftRows.svg&#34; alt=&#34;shiftrows&#34; /&gt;
+&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;func shiftRows(state []uint32) {
+	for i := 1; i &amp;lt; 4; i++ {
+		// rotate word left by specified number of bytes
+		state[i] = rotWordLeft(state[i], i)
+	}
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;To test if &lt;code&gt;shiftRows&lt;/code&gt; working correctly, use this input&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;input := []uint32{
+		0x8e9f01c6,
+		0x4ddc01c6,
+		0xa15801c6,
+		0xbc9d01c6}
+expected := []uint32{
+		0x8e9f01c6,
+		0xdc01c64d,
+		0x01c6a158,
+		0xc6bc9d01}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;&lt;code&gt;invShiftRows&lt;/code&gt; is the inverse operation. The top row is left untouched and the next 3 rows are shifted right by 1, 2, 3 bytes. Again, I&amp;rsquo;d recommend writing a test to ensure that applying both &lt;code&gt;shiftRows&lt;/code&gt; and &lt;code&gt;invShiftRows&lt;/code&gt; to random bytes returns the original.&lt;/p&gt;
+
+&lt;h3 id=&#34;mixcolumns-and-invmixcolumns:83a2e2e2ae104ce1d681fcb0a1f8ca6c&#34;&gt;mixColumns and invMixColumns&lt;/h3&gt;
+
+&lt;p&gt;This step is slightly complicated, compared to the other 3. The state is operated on column-wise. Each byte of the column is replaced based on an operation. As you&amp;rsquo;d expect, in &lt;code&gt;invMixColumns&lt;/code&gt; the 4 bytes are replaced by the 4 original ones.&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;https://upload.wikimedia.org/wikipedia/commons/7/76/AES-MixColumns.svg&#34; alt=&#34;mixcols&#34; /&gt;
+&lt;/p&gt;
+
+&lt;p&gt;Speaking about the operation itself, it involves multiplication and addition in the Galois field. That sounded arcane to me, until I realised that I can get the results of multiplication via a lookup table and addition is just bit-wise XOR.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// a0-3 represent the bytes of a column from top to bottom
+// r0-3 are the transformed bytes
+
+func calcMixCols(a0, a1, a2, a3 byte) (r0, r1, r2, r3 byte) {
+	// r0 = 2*a0 + 3*a1 + a2   + a3
+	// r1 = a0   + 2*a1 + 3*a2 + a3
+	// r2 = a0   + a1   + 2*a2 + 3*a3
+	// r3 = 3*a0 + a1   + a2   + 2*a3
+  r0 = gMulBy2[a0] ^ gMulBy3[a1] ^  a2  ^  a3
+  r1 = a0          ^ gMulBy2[a1] ^ gMulBy3[a2] ^ a3
+  r2 = a0  ^  a1   ^ gMulBy2[a2] ^ gMulBy3[a3]
+  r3 = gMulBy3[a0] ^  a1  ^  a2  ^ gMulBy2[a3]
+  return
+}
+
+func calcInvMixCols(a0, a1, a2, a3 byte) (r0, r1, r2, r3 byte) {
+	// r0 = 14*a0 + 11*a1 + 13*a2 +  9*a3
+	// r1 =  9*a0 + 14*a1 + 11*a2 + 13*a3
+	// r2 = 13*a0 +  9*a1 + 14*a2 + 11*a3
+	// r3 = 11*a0 + 13*a1 +  9*a2 + 14*a3
+  r0 = gMulBy14[a0]^gMulBy11[a1]^gMulBy13[a2]^gMulBy9[a3]  
+  r1 = gMulBy9[a0] ^gMulBy14[a1]^gMulBy11[a2]^gMulBy13[a3]
+  r2 = gMulBy13[a0]^gMulBy9[a1] ^gMulBy14[a2]^gMulBy11[a3]
+  r3 = gMulBy11[a0]^gMulBy13[a1]^gMulBy9[a2] ^gMulBy14[a3]
+  return
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Each of the &lt;code&gt;gMulBy&lt;/code&gt; lookup tables are 256 bytes in size. (You can find them &lt;a href=&#34;https://en.wikipedia.org/wiki/Rijndael_mix_columns#Galois_Multiplication_lookup_tables&#34;&gt;here&lt;/a&gt;)&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;input := []uint32{
+    0xdbf201c6,
+    0x130a01c6,
+    0x532201c6,
+    0x455c01c6}
+expected := []uint32{
+    0x8e9f01c6,
+    0x4ddc01c6,
+    0xa15801c6,
+    0xbc9d01c6}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;For &lt;code&gt;invMixColumns&lt;/code&gt;, the test vectors are simply reversed. As with the other steps, it&amp;rsquo;s a good idea to check if your &lt;code&gt;mixColumns&lt;/code&gt; and &lt;code&gt;invMixColumns&lt;/code&gt; invert each other.&lt;/p&gt;
+
+&lt;p&gt;I&amp;rsquo;m not going to explain Galois field arithmetic here for 2 reasons: I&amp;rsquo;d prefer to keep this post short, and its not necessary to know exactly how it works while implementing AES. I do recommend reading &lt;a href=&#34;http://www.amazon.com/Design-RijndaeL-Encryption-Information-Cryptography/dp/3540425802&#34;&gt;this book&lt;/a&gt; by the creators of AES if you&amp;rsquo;re interested in that or other interesting topics like cryptanalysis of AES.&lt;/p&gt;
+
+&lt;h3 id=&#34;addroundkey:83a2e2e2ae104ce1d681fcb0a1f8ca6c&#34;&gt;addRoundKey&lt;/h3&gt;
+
+&lt;p&gt;The simplest of all the steps. A bit-wise XOR between the 16-byte state and the appropriate 16-bytes of the expanded key.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;func addRoundKey(state, key []uint32) {
+	for i := 0; i &amp;lt; 4; i++ {
+		state[i] = state[i] ^ key[i]
+	}
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;As you probably know, XOR-ing any input with the same key twice returns the original input. That&amp;rsquo;s why we use the same operation with the same key in both encryption and decryption.&lt;/p&gt;
+
+&lt;h3 id=&#34;key-expansion:83a2e2e2ae104ce1d681fcb0a1f8ca6c&#34;&gt;Key Expansion&lt;/h3&gt;
+
+&lt;p&gt;I mentioned previously that the expanded key is based on the 16-byte key and its 16*(rounds+1) bytes in length. Thus, a different 16-bytes is used for each  call to &lt;code&gt;addRoundKey&lt;/code&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;potential-gotcha:83a2e2e2ae104ce1d681fcb0a1f8ca6c&#34;&gt;Potential gotcha&lt;/h3&gt;
+
+&lt;p&gt;Be careful of how you fill the state matrix with your 16 bytes of input.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;// wrong
+ 0  1  2  3
+ 4  5  6  7
+ 8  9 10 11
+12 13 14 15
+
+// correct
+ 0  4  8 12
+ 1  5  9 13
+ 2  6 10 14
+ 3  7 11 15
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h3 id=&#34;congrats:83a2e2e2ae104ce1d681fcb0a1f8ca6c&#34;&gt;Congrats!&lt;/h3&gt;
+
+&lt;p&gt;You just implemented AES. Try decrypting the file &lt;a href=&#34;http://cryptopals.com/sets/1/challenges/7/&#34;&gt;here&lt;/a&gt; to see if you got it right :)&lt;/p&gt;
+
+&lt;h3 id=&#34;closing:83a2e2e2ae104ce1d681fcb0a1f8ca6c&#34;&gt;Closing&lt;/h3&gt;
+
+&lt;p&gt;You can find my implementation here:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/nindalf/crypto-challenge/blob/master/matasano/aes.go&#34;&gt;aes.go&lt;/a&gt; - &lt;code&gt;EncryptAES()&lt;/code&gt;, &lt;code&gt;DecryptAES()&lt;/code&gt; and all helper functions.&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/nindalf/crypto-challenge/blob/master/matasano/aes_test.go&#34;&gt;aes_test.go&lt;/a&gt; - test vectors for each step.&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/nindalf/crypto-challenge/blob/master/matasano/aes_const.go&#34;&gt;aes_const.go&lt;/a&gt; - S-boxes and the Galois-field multiplication lookup tables.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;The caveats mentioned in the foot-shooting-prevention agreement apply to my code as well. The linked code is useful for learning about AES, but is not secure and should not be used to encrypt anything important. Its not especially performant either since the best possible software implementation would replace many steps with a lookup table. The creators of AES intended software implementations to be optimized in this manner.&lt;/p&gt;
+
+&lt;p&gt;A lookup table based implementation can be found in the Go standard library &lt;a href=&#34;http://golang.org/src/crypto/aes/block.go&#34;&gt;here&lt;/a&gt;. There&amp;rsquo;s also an implementation &lt;a href=&#34;http://golang.org/src/crypto/aes/asm_amd64.s&#34;&gt;written in assembly&lt;/a&gt; for processors that support the &lt;a href=&#34;https://en.wikipedia.org/wiki/AES_instruction_set&#34;&gt;AES-NI&lt;/a&gt; instructions. The assembly implementation is much faster, as you&amp;rsquo;d expect.&lt;/p&gt;
+
+&lt;p&gt;Further reading&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf&#34;&gt;FIPS-197 Document&lt;/a&gt; [2001] - Document formalising Rijndael as the Advanced Encryption Standard and a detailed explanation of its implementation.&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>How Goroutines Work</title>
+      <link>http://localhost:1313/post/how-goroutines-work/</link>
+      <pubDate>Thu, 08 Jan 2015 08:36:54 -0700</pubDate>
+      
+      <guid>http://localhost:1313/post/how-goroutines-work/</guid>
+      <description>
+
+&lt;p&gt;###Introduction to Go&lt;/p&gt;
+
+&lt;p&gt;If you are new to the Go programming language, or if the sentence &amp;ldquo;Concurrency is not parallelism&amp;rdquo; means nothing to you, then check out Rob Pike&amp;rsquo;s &lt;a href=&#34;http://www.youtube.com/watch?v=cN_DpYBzKso&#34;&gt;excellent talk on the subject&lt;/a&gt;. Its 30 minutes long, and I guarantee that watching it is 30 minutes well spent.&lt;/p&gt;
+
+&lt;p&gt;To summarize the difference - &amp;ldquo;when people hear the word concurrency they often think of parallelism, a related but quite distinct concept. In programming, concurrency is the composition of independently executing processes, while parallelism is the simultaneous execution of (possibly related) computations. Concurrency is about dealing with lots of things at once. Parallelism is about doing lots of things at once.&amp;rdquo; &lt;sup&gt;[1]&lt;/sup&gt;&lt;/p&gt;
+
+&lt;p&gt;Go allows us to write concurrent programs. It provides goroutines and importantly, the ability to communicate between them. I will focus on the former.&lt;/p&gt;
+
+&lt;h3 id=&#34;goroutines-and-threads-the-differences:019ae00c504e08f1080d694a57bde0cc&#34;&gt;Goroutines and Threads - the differences&lt;/h3&gt;
+
+&lt;p&gt;Go uses goroutines while a language like Java uses threads. What are the differences between the two? We need to look at 3 factors - memory consumption, setup and teardown and switching time.&lt;/p&gt;
+
+&lt;h4 id=&#34;memory-consumption:019ae00c504e08f1080d694a57bde0cc&#34;&gt;Memory consumption&lt;/h4&gt;
+
+&lt;p&gt;The creation of a goroutine does not require much memory - only 2kB of stack space. They grow by allocating and freeing heap storage as required.&lt;sup&gt;[2][3]&lt;/sup&gt; Threads on the other hand start out at 1Mb (500 times more), along with a region of memory called a guard page that acts as a guard between one thread&amp;rsquo;s memory and another.&lt;sup&gt;[7]&lt;/sup&gt;&lt;/p&gt;
+
+&lt;p&gt;A server handling incoming requests can therefore create one goroutine per request without a problem, but one thread per request will eventually lead to the dreaded OutOfMemoryError. This isn&amp;rsquo;t limited to Java - any language that uses OS threads as the primary means of concurrency will face this issue.&lt;/p&gt;
+
+&lt;h4 id=&#34;setup-and-teardown-costs:019ae00c504e08f1080d694a57bde0cc&#34;&gt;Setup and teardown costs&lt;/h4&gt;
+
+&lt;p&gt;Threads have significant setup and teardown costs because it has to request resources from the OS and return it once its done. The workaround to this problem is to maintain a pool of threads. In contrast, goroutines are created and destroyed by the runtime and those operations are pretty cheap. The language doesn&amp;rsquo;t support manual management of goroutines.&lt;/p&gt;
+
+&lt;h4 id=&#34;switching-costs:019ae00c504e08f1080d694a57bde0cc&#34;&gt;Switching costs&lt;/h4&gt;
+
+&lt;p&gt;When a thread blocks, another has to be scheduled in its place. Threads are scheduled preemptively, and during a thread switch, the scheduler needs to save/restore ALL registers, that is, 16 general purpose registers, PC (Program Counter), SP (Stack Pointer), segment registers, 16 XMM registers, FP coprocessor state, 16 AVX registers, all MSRs etc. This is quite significant when there is rapid switching between threads.&lt;/p&gt;
+
+&lt;p&gt;Goroutines are scheduled cooperatively and when a switch occurs, only 3 registers need to be saved/restored - Program Counter, Stack Pointer and DX. The cost is much lower.&lt;/p&gt;
+
+&lt;p&gt;As discussed earlier, the number of goroutines is generally much higher, but that doesn&amp;rsquo;t make a difference to switching time for two reasons. Only runnable goroutines are considered, blocked ones aren&amp;rsquo;t. Also, modern schedulers are O(1) complexity, meaning switching time is not affected by the number of choices (threads or goroutines).&lt;sup&gt;[5]&lt;/sup&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;how-goroutines-are-executed:019ae00c504e08f1080d694a57bde0cc&#34;&gt;How goroutines are executed&lt;/h3&gt;
+
+&lt;p&gt;As mentioned earlier, the runtime manages the goroutines throughout from creation to scheduling to teardown. The runtime is allocated a few threads on which all the goroutines are multiplexed. At any point of time, each thread will be executing one goroutine. If that goroutine is blocked, then it will be swapped out for another goroutine that will execute on that thread instead.&lt;sup&gt;[6]&lt;/sup&gt;&lt;/p&gt;
+
+&lt;p&gt;As the goroutines are scheduled cooperatively, a goroutine that loops continuously can starve other goroutines on the same thread. In Go 1.2, this problem is somewhat alleviated by occasionally invoking the Go scheduler when entering a function, so a loop that includes a non-inlined function call can be prempted.&lt;/p&gt;
+
+&lt;h3 id=&#34;goroutines-blocking:019ae00c504e08f1080d694a57bde0cc&#34;&gt;Goroutines blocking&lt;/h3&gt;
+
+&lt;p&gt;Goroutines are cheap and do not cause the thread on which they are multiplexed to block if they are blocked on&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;network input&lt;/li&gt;
+&lt;li&gt;sleeping&lt;/li&gt;
+&lt;li&gt;channel operations or&lt;/li&gt;
+&lt;li&gt;blocking on primitives in the sync package.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Even if tens of thousands of goroutines have been spawned, it&amp;rsquo;s not a waste of system resources if most of them are blocked on one of these since the runtime schedules another goroutine instead.&lt;/p&gt;
+
+&lt;p&gt;In simple terms, goroutines are a lightweight abstraction over threads. A Go programmer does not deal with threads, and similarly the OS is not aware of the existence of goroutines. From the OS&amp;rsquo;s perspective, a Go program will behave like an event-driven C program. &lt;sup&gt;[5]&lt;/sup&gt;&lt;/p&gt;
+
+&lt;h3 id=&#34;threads-and-processors:019ae00c504e08f1080d694a57bde0cc&#34;&gt;Threads and processors&lt;/h3&gt;
+
+&lt;p&gt;Although you cannot directly control the number of threads that the runtime will create, it is possible to set the number of processor cores used by the program. This is done by setting the variable &lt;code&gt;GOMAXPROCS&lt;/code&gt; with a call to &lt;code&gt;runtime.GOMAXPROCS(n)&lt;/code&gt;. Increasing the number of cores may not necessarily improve the performance of your program, depending on its design. The profiling tools can be used to find the ideal number of cores for your program.&lt;/p&gt;
+
+&lt;p&gt;###Closing thoughts&lt;/p&gt;
+
+&lt;p&gt;As with other languages, it is important to prevent simultaneous access of shared resources by more than one goroutine. It is best to transfer data between goroutines using channels, ie, &lt;a href=&#34;https://blog.golang.org/share-memory-by-communicating&#34;&gt;do not communicate by sharing memory; instead, share memory by communicating&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;Lastly, I&amp;rsquo;d strongly recommend you check out &lt;a href=&#34;http://www.cs.cmu.edu/~crary/819-f09/Hoare78.pdf&#34;&gt;Communicating Sequential Processes&lt;/a&gt; by C. A. R. Hoare. This man was truly a genius. In this paper (published 1978) he predicted how the single core performance of processors would eventually plateau and chip-makers would instead increase the number of cores. His proposal to exploit this had a deep influence on the design of Go.&lt;/p&gt;
+
+&lt;p&gt;###Footnotes&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://blog.golang.org/concurrency-is-not-parallelism&#34;&gt;1&lt;/a&gt; - Concurrency is not parallelism by Rob Pike&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://golang.org/doc/effective_go.html#goroutines&#34;&gt;2&lt;/a&gt; - Effective Go: Goroutines&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://golang.org/doc/go1.4#runtime&#34;&gt;3&lt;/a&gt; - Goroutine stack size was decreased from 8kB to 2kB in Go 1.4.&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://agis.io/2014/03/25/contiguous-stacks-in-go.html&#34;&gt;4&lt;/a&gt; - Goroutine stacks became contiguous in Go 1.3&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;https://groups.google.com/forum/#!topic/golang-nuts/j51G7ieoKh4&#34;&gt;5&lt;/a&gt; - Dmitry Vyukov explains scheduling of goroutines on golang-nuts&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://www1.cs.columbia.edu/~aho/cs6998/reports/12-12-11_DeshpandeSponslerWeiss_GO.pdf&#34;&gt;6&lt;/a&gt; - Analysis of the Go runtime scheduler by Deshpande et al.&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://dave.cheney.net/2014/06/07/five-things-that-make-go-fast&#34;&gt;7&lt;/a&gt; - 5 things that make Go fast by Dave Cheney&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;###Further Reading&lt;/p&gt;
+
+&lt;p&gt;If you&amp;rsquo;re interested in learning more about Go, there are a couple great talks about the language here&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://www.youtube.com/watch?v=f6kdp27TYZs‎&#34;&gt;Go Concurrency Patterns&lt;/a&gt; by Rob Pike&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;&lt;a href=&#34;http://www.youtube.com/watch?v=QDDwwePbDtw&#34;&gt;Advanced Go Concurrency Patterns&lt;/a&gt; by Sameer Ajmani.&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>

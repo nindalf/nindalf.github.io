@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>My New Hugo Site</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <link rel="stylesheet" href="http://localhost:1313/css/bootstrap.min.css" media="screen">
+    <link rel="stylesheet" href="http://localhost:1313/css/hugo-bootswatch.css">
+  </head>
+  <body>
+
+    <div class="navbar navbar-default navbar-fixed-top">
+      <div class="container">
+        <div class="navbar-header">
+          <a href="http://localhost:1313/" class="navbar-brand">My New Hugo Site</a>
+          <button class="navbar-toggle" type="button" data-toggle="collapse" data-target="#navbar-main">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+        </div>
+        <div class="navbar-collapse collapse" id="navbar-main">
+          <ul class="nav navbar-nav navbar-right">
+           <li class="dropdown">
+              <a class="dropdown-toggle" data-toggle="dropdown" href="#" id="sections">Sections<span class="caret"></span></a>
+              <ul class="dropdown-menu" aria-labelledby="download">
+              
+                <li><a href="http://localhost:1313/"></a></li>
+              
+                <li><a href="http://localhost:1313/post">post</a></li>
+              
+              </ul>
+            </li> 
+          </ul>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="container">
+        <h1><a href="http://localhost:1313/post/implementing-aes/">Implementing AES</a></h1>
+        <span class="lead">Fri, Jan 9, 2015</span>
+        <div class="post">
+            
+
+<p>The Advanced Encryption Standard is the most widely used encryption algorithm today. Its fast and secure but also easy to understand and implement.</p>
+
+<p>If you&rsquo;re interested in learning about AES, look at this comic - <a href="http://www.moserware.com/2009/09/stick-figure-guide-to-advanced.html">A Stick Figure Guide to the Advanced Encryption Standard</a>. He splits his comic into 4 Acts: brief history of crypto, crypto basics, implementation and math. He did a great job with all 4 parts, but I thought elaborating on the implementation would be helpful. In this post, I will only assume you&rsquo;ve read Acts 2 and 3 and signed the foot-shooting-prevention agreement.</p>
+
+<p><center><img src="http://i.imgur.com/bPZzTwsl.png" alt="Agreement" />
+</center></p>
+
+<hr />
+
+<h3 id="aes-encryption:83a2e2e2ae104ce1d681fcb0a1f8ca6c">AES Encryption</h3>
+
+<p>The implementation of AES involves doing a set of simple operations repeatedly. Each repetition is called a &ldquo;round&rdquo;. Depending on the size of the key (128, 192 or 256 bit), the input (block of 16 bytes) goes through 10, 12 or 14 rounds. In applying the 2 Big Ideas - Diffusion and Confusion, AES makes sure that each bit in the 16 byte block depends on every bit in the same block from 2 rounds previously. That&rsquo;s quite the achievement, so lets speak about the operations in detail.</p>
+
+<p>Each round consists of 4 steps</p>
+
+<ol>
+<li>applying a key - <code>addRoundKey()</code></li>
+<li>substituting bytes - <code>subBytes()</code></li>
+<li>shifting rows - <code>shiftRows()</code></li>
+<li>mixing columns - <code>mixColumns()</code></li>
+</ol>
+
+<p>Decryption involves the inverse of these steps, in reverse order</p>
+
+<ol>
+<li>inverse-mixing columns - <code>invMixColumns()</code></li>
+<li>inverse-shifting rows - <code>invShiftRows()</code></li>
+<li>inverse-substituting bytes - <code>invSubBytes()</code></li>
+<li>applying a key - <code>addRoundKey()</code></li>
+</ol>
+
+<p>Have a look at the <code>encryptAES</code> function below, implemented in Go (Go has a C-like syntax)</p>
+
+<pre><code>func encryptAES(state, expkey []uint32, rounds int) {
+	keyi := 0
+	addRoundKey(state, expkey[keyi:keyi+4])
+	keyi += 4
+	for i := 0; i &lt; rounds; i++ {
+		subBytes(state)
+		shiftRows(state)
+		mixColumns(state)
+		addRoundKey(state, expkey[keyi:keyi+4])
+		keyi += 4
+	}
+	subBytes(state)
+	shiftRows(state)
+	addRoundKey(state, expkey[keyi:keyi+4])
+}
+</code></pre>
+
+<p>Notes on the implementation:</p>
+
+<ul>
+<li>The 16-byte block, called state is represented as a slice of 4 4-byte unsigned integers. The 4-byte unsigned int is also referred to as a &ldquo;word&rdquo;.</li>
+<li>The expanded key is based on the original key. Its 16*(rounds+1) bytes in length.</li>
+</ul>
+
+<h3 id="subbytes-and-invsubbytes:83a2e2e2ae104ce1d681fcb0a1f8ca6c">subBytes and invSubBytes</h3>
+
+<p>All the 4 operations are invertible. If you took any random 16-byte state and applied any operation and its inverse, you&rsquo;d get back the original state. This is how decryption is a simple mirror of the encryption process.</p>
+
+<p>In <code>subBytes</code> each of the 16 bytes is replaced by a byte from the S-box (a lookup table). The code would look like:</p>
+
+<pre><code>input[i] = sbox[input[i]] // i = 0, 1, ..., 15
+</code></pre>
+
+<p>For <code>invSubBytes</code>, only the lookup table is changed. The code is <code>input[i] = invsbox[input[i]]</code>. The values for both lookup tables can be found on the <a href="https://en.wikipedia.org/wiki/Rijndael_S-box">wiki page</a>. If this step appears really simple, its because it is. Nevertheless, I&rsquo;d suggest writing a test to check if its working correctly.</p>
+
+<pre><code>input := []uint32{0x8e9ff1c6, 0x4ddce1c7, 0xa158d1c8, 0xbc9dc1c9}
+expected := []uint32{0x19dba1b4, 0xe386f8c6, 0x326a3ee8, 0x655e78dd}
+</code></pre>
+
+<p>Another useful test would be to apply <code>subBytes</code> and <code>invSubBytes</code> on 16 random bytes and check if you get back the original.</p>
+
+<h3 id="shiftrows-and-invshiftrows:83a2e2e2ae104ce1d681fcb0a1f8ca6c">shiftRows and invShiftRows</h3>
+
+<p>In <code>shiftRows</code>, the rows are shifted left. The top row is left untouched, the second row by 1 byte, the third row by 2 bytes, the fourth row by 3 bytes. As depicted below</p>
+
+<p><img src="https://upload.wikimedia.org/wikipedia/commons/6/66/AES-ShiftRows.svg" alt="shiftrows" />
+</p>
+
+<pre><code>func shiftRows(state []uint32) {
+	for i := 1; i &lt; 4; i++ {
+		// rotate word left by specified number of bytes
+		state[i] = rotWordLeft(state[i], i)
+	}
+}
+</code></pre>
+
+<p>To test if <code>shiftRows</code> working correctly, use this input</p>
+
+<pre><code>input := []uint32{
+		0x8e9f01c6,
+		0x4ddc01c6,
+		0xa15801c6,
+		0xbc9d01c6}
+expected := []uint32{
+		0x8e9f01c6,
+		0xdc01c64d,
+		0x01c6a158,
+		0xc6bc9d01}
+</code></pre>
+
+<p><code>invShiftRows</code> is the inverse operation. The top row is left untouched and the next 3 rows are shifted right by 1, 2, 3 bytes. Again, I&rsquo;d recommend writing a test to ensure that applying both <code>shiftRows</code> and <code>invShiftRows</code> to random bytes returns the original.</p>
+
+<h3 id="mixcolumns-and-invmixcolumns:83a2e2e2ae104ce1d681fcb0a1f8ca6c">mixColumns and invMixColumns</h3>
+
+<p>This step is slightly complicated, compared to the other 3. The state is operated on column-wise. Each byte of the column is replaced based on an operation. As you&rsquo;d expect, in <code>invMixColumns</code> the 4 bytes are replaced by the 4 original ones.</p>
+
+<p><img src="https://upload.wikimedia.org/wikipedia/commons/7/76/AES-MixColumns.svg" alt="mixcols" />
+</p>
+
+<p>Speaking about the operation itself, it involves multiplication and addition in the Galois field. That sounded arcane to me, until I realised that I can get the results of multiplication via a lookup table and addition is just bit-wise XOR.</p>
+
+<pre><code>// a0-3 represent the bytes of a column from top to bottom
+// r0-3 are the transformed bytes
+
+func calcMixCols(a0, a1, a2, a3 byte) (r0, r1, r2, r3 byte) {
+	// r0 = 2*a0 + 3*a1 + a2   + a3
+	// r1 = a0   + 2*a1 + 3*a2 + a3
+	// r2 = a0   + a1   + 2*a2 + 3*a3
+	// r3 = 3*a0 + a1   + a2   + 2*a3
+  r0 = gMulBy2[a0] ^ gMulBy3[a1] ^  a2  ^  a3
+  r1 = a0          ^ gMulBy2[a1] ^ gMulBy3[a2] ^ a3
+  r2 = a0  ^  a1   ^ gMulBy2[a2] ^ gMulBy3[a3]
+  r3 = gMulBy3[a0] ^  a1  ^  a2  ^ gMulBy2[a3]
+  return
+}
+
+func calcInvMixCols(a0, a1, a2, a3 byte) (r0, r1, r2, r3 byte) {
+	// r0 = 14*a0 + 11*a1 + 13*a2 +  9*a3
+	// r1 =  9*a0 + 14*a1 + 11*a2 + 13*a3
+	// r2 = 13*a0 +  9*a1 + 14*a2 + 11*a3
+	// r3 = 11*a0 + 13*a1 +  9*a2 + 14*a3
+  r0 = gMulBy14[a0]^gMulBy11[a1]^gMulBy13[a2]^gMulBy9[a3]  
+  r1 = gMulBy9[a0] ^gMulBy14[a1]^gMulBy11[a2]^gMulBy13[a3]
+  r2 = gMulBy13[a0]^gMulBy9[a1] ^gMulBy14[a2]^gMulBy11[a3]
+  r3 = gMulBy11[a0]^gMulBy13[a1]^gMulBy9[a2] ^gMulBy14[a3]
+  return
+}
+</code></pre>
+
+<p>Each of the <code>gMulBy</code> lookup tables are 256 bytes in size. (You can find them <a href="https://en.wikipedia.org/wiki/Rijndael_mix_columns#Galois_Multiplication_lookup_tables">here</a>)</p>
+
+<pre><code>input := []uint32{
+    0xdbf201c6,
+    0x130a01c6,
+    0x532201c6,
+    0x455c01c6}
+expected := []uint32{
+    0x8e9f01c6,
+    0x4ddc01c6,
+    0xa15801c6,
+    0xbc9d01c6}
+</code></pre>
+
+<p>For <code>invMixColumns</code>, the test vectors are simply reversed. As with the other steps, it&rsquo;s a good idea to check if your <code>mixColumns</code> and <code>invMixColumns</code> invert each other.</p>
+
+<p>I&rsquo;m not going to explain Galois field arithmetic here for 2 reasons: I&rsquo;d prefer to keep this post short, and its not necessary to know exactly how it works while implementing AES. I do recommend reading <a href="http://www.amazon.com/Design-RijndaeL-Encryption-Information-Cryptography/dp/3540425802">this book</a> by the creators of AES if you&rsquo;re interested in that or other interesting topics like cryptanalysis of AES.</p>
+
+<h3 id="addroundkey:83a2e2e2ae104ce1d681fcb0a1f8ca6c">addRoundKey</h3>
+
+<p>The simplest of all the steps. A bit-wise XOR between the 16-byte state and the appropriate 16-bytes of the expanded key.</p>
+
+<pre><code>func addRoundKey(state, key []uint32) {
+	for i := 0; i &lt; 4; i++ {
+		state[i] = state[i] ^ key[i]
+	}
+}
+</code></pre>
+
+<p>As you probably know, XOR-ing any input with the same key twice returns the original input. That&rsquo;s why we use the same operation with the same key in both encryption and decryption.</p>
+
+<h3 id="key-expansion:83a2e2e2ae104ce1d681fcb0a1f8ca6c">Key Expansion</h3>
+
+<p>I mentioned previously that the expanded key is based on the 16-byte key and its 16*(rounds+1) bytes in length. Thus, a different 16-bytes is used for each  call to <code>addRoundKey</code></p>
+
+<h3 id="potential-gotcha:83a2e2e2ae104ce1d681fcb0a1f8ca6c">Potential gotcha</h3>
+
+<p>Be careful of how you fill the state matrix with your 16 bytes of input.</p>
+
+<pre><code>// wrong
+ 0  1  2  3
+ 4  5  6  7
+ 8  9 10 11
+12 13 14 15
+
+// correct
+ 0  4  8 12
+ 1  5  9 13
+ 2  6 10 14
+ 3  7 11 15
+</code></pre>
+
+<h3 id="congrats:83a2e2e2ae104ce1d681fcb0a1f8ca6c">Congrats!</h3>
+
+<p>You just implemented AES. Try decrypting the file <a href="http://cryptopals.com/sets/1/challenges/7/">here</a> to see if you got it right :)</p>
+
+<h3 id="closing:83a2e2e2ae104ce1d681fcb0a1f8ca6c">Closing</h3>
+
+<p>You can find my implementation here:</p>
+
+<ul>
+<li><a href="https://github.com/nindalf/crypto-challenge/blob/master/matasano/aes.go">aes.go</a> - <code>EncryptAES()</code>, <code>DecryptAES()</code> and all helper functions.</li>
+<li><a href="https://github.com/nindalf/crypto-challenge/blob/master/matasano/aes_test.go">aes_test.go</a> - test vectors for each step.</li>
+<li><a href="https://github.com/nindalf/crypto-challenge/blob/master/matasano/aes_const.go">aes_const.go</a> - S-boxes and the Galois-field multiplication lookup tables.</li>
+</ul>
+
+<p>The caveats mentioned in the foot-shooting-prevention agreement apply to my code as well. The linked code is useful for learning about AES, but is not secure and should not be used to encrypt anything important. Its not especially performant either since the best possible software implementation would replace many steps with a lookup table. The creators of AES intended software implementations to be optimized in this manner.</p>
+
+<p>A lookup table based implementation can be found in the Go standard library <a href="http://golang.org/src/crypto/aes/block.go">here</a>. There&rsquo;s also an implementation <a href="http://golang.org/src/crypto/aes/asm_amd64.s">written in assembly</a> for processors that support the <a href="https://en.wikipedia.org/wiki/AES_instruction_set">AES-NI</a> instructions. The assembly implementation is much faster, as you&rsquo;d expect.</p>
+
+<p>Further reading</p>
+
+<ul>
+<li><a href="http://csrc.nist.gov/publications/fips/fips197/fips-197.pdf">FIPS-197 Document</a> [2001] - Document formalising Rijndael as the Advanced Encryption Standard and a detailed explanation of its implementation.</li>
+</ul>
+
+        </div>
+
+              <footer>
+        <nav class="navbar navbar-default">
+          <div class="container-fluid">
+            <div class="collapse navbar-collapse">
+              <ul class="nav navbar-nav">
+                <li><a href="http://gohugo.io">Hugo</a></li>
+                <li><a href="http://bootswatch.com">Bootswatch</a></li>
+                <li><a href="http://getbootstrap.com">Bootstrap</a></li>
+              </ul>
+              <ul class="nav navbar-nav navbar-right">
+                <li class="pull-right"><a href="#top">Back to top</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+      </footer>
+
+ 
+     </div>
+     
+        <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+        <script src="http://localhost:1313/js/bootstrap.min.js"></script>
+        <script src="http://localhost:1313/js/bootswatch.js"></script>
+    </body>
+</html>
+
+
